@@ -3,7 +3,7 @@ use std::io::{Read, Write};
 
 fn main() {
     let mut stream = TcpStream::connect("127.0.0.1:44556").expect("Could not connect to the server");
-    stream.write(b"bidirectional\n").expect("Failed to write to server");
+    stream.write(b"COMPETITOR\n").expect("Failed to write to server");
 
     let mut buffer = [0; 512];
     loop {
