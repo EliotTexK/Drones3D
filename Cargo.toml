@@ -7,11 +7,11 @@ edition = "2021"
 
 [[bin]]
 name = "server"
-path = "src/server/main.rs"
+path = "backend/server/main.rs"
 
 [[bin]]
 name = "test-client"
-path = "src/test-client/main.rs"
+path = "backend/test-client/main.rs"
 
 [dependencies]
 clap = { version = "4.4.14", features = ["derive"] }
