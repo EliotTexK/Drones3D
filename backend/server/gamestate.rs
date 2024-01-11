@@ -113,7 +113,14 @@ struct Gamestate {
     max_game_ticks: u32
 }
 
-fn in_bounds_sphere()
+fn sphere_inside_central_cube(
+    position: [f32;3],
+    radius: f32,
+    half_side_length: f32
+) -> bool {
+    // TODO: implement
+    return false;
+}
 
 impl Gamestate {
     pub fn new(rng: &mut ThreadRng, max_game_ticks: u32) -> Gamestate {

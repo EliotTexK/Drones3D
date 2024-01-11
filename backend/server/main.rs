@@ -52,12 +52,12 @@ fn handle_client(
     computed_next_tick: Arc<Barrier>,
     training_mode: bool,
     game_tick_delay: u64,
-    max_timeout_deficit: u128,
+    competitor_max_debt: u128,
     max_game_ticks: u32
 ) {
     let mut connection_type: ConnectionType = ConnectionType::Unknown;
     let mut last_broadcast = Instant::now();
-    let mut timeout_deficit: u128 = 0;
+    let mut timeout_debt: u128 = 0;
 
     loop {
         let msg: String;
@@ -123,8 +123,8 @@ fn handle_client(
                     }
                     if remaining_sleep_time < Duration::from_millis(0) {
                         // Add to timeout deficit
-                        timeout_deficit -= remaining_sleep_time.as_millis();
-                        if timeout_deficit > max_timeout_deficit {
+                        timeout_debt -= remaining_sleep_time.as_millis();
+                        if timeout_debt > competitor_max_debt {
                             println!("Competitor has taken too long: disconnect");
                             return;
                         }
@@ -179,7 +179,7 @@ struct Args {
     game_tick_delay: u64,
     /// Maximum total milliseconds a competitor can be "late" with their response
     #[arg(short, long, default_value_t = 1000)]
-    max_timeout_deficit: u128,
+    competitor_max_debt: u128,
     /// Maximum game ticks until the game is over
     #[arg(short, long, default_value_t = 1000)]
     max_game_ticks: u32
@@ -191,7 +191,7 @@ fn main() {
     let args = Args::parse();
     let training_mode = args.training_mode;
     let game_tick_delay = args.game_tick_delay;
-    let max_timeout_deficit = args.max_timeout_deficit;
+    let competitor_max_debt = args.competitor_max_debt;
     let max_game_ticks = args.max_game_ticks;
     let listener = TcpListener::bind("127.0.0.1:44556").unwrap();
     let counter: Arc<Mutex<i32>> = Arc::new(Mutex::new(0));
@@ -217,7 +217,7 @@ fn main() {
                     thread::spawn(move || {
                         handle_client(stream, counter,num_competitors, has_spectator,
                             recieved_inputs, computed_next_tick, training_mode, game_tick_delay,
-                            max_timeout_deficit, max_game_ticks
+                            competitor_max_debt, max_game_ticks
                         );
                     });
                     threads_spawned += 1;
@@ -225,7 +225,7 @@ fn main() {
                     // use the main thread to handle final connection to reduce thread usage
                     handle_client(stream, counter,num_competitors, has_spectator,
                         recieved_inputs, computed_next_tick, training_mode, game_tick_delay,
-                        max_timeout_deficit, max_game_ticks
+                        competitor_max_debt, max_game_ticks
                     );
                 }
             }
