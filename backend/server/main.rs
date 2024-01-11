@@ -3,9 +3,9 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex, Barrier};
 use std::thread;
 use std::time::{Instant, Duration};
-
 use clap::Parser;
 
+pub mod gamestate;
 
 // TCP buffer size for incoming client messages
 const BUFFER_SIZE: usize = 512;
@@ -49,10 +49,11 @@ fn handle_client(
     num_competitors: Arc<Mutex<u32>>,
     num_spectators: Arc<Mutex<u32>>,
     recieved_inputs: Arc<Barrier>,
-    computed_gamestate: Arc<Barrier>,
+    computed_next_tick: Arc<Barrier>,
     training_mode: bool,
-    frame_delay: u64,
-    max_timeout_deficit: u128
+    game_tick_delay: u64,
+    max_timeout_deficit: u128,
+    max_game_ticks: u32
 ) {
     let mut connection_type: ConnectionType = ConnectionType::Unknown;
     let mut last_broadcast = Instant::now();
@@ -114,10 +115,10 @@ fn handle_client(
                     // measure time since last broadcast
                     let since_last_broadcast = last_broadcast.elapsed();
                     let remaining_sleep_time =
-                        Duration::from_millis(frame_delay) - since_last_broadcast;
+                        Duration::from_millis(game_tick_delay) - since_last_broadcast;
                     // Check if sleeping is needed
                     if remaining_sleep_time > Duration::from_millis(0) {
-                        // Sleep until next frame
+                        // Sleep until next game tick
                         std::thread::sleep(remaining_sleep_time);
                     }
                     if remaining_sleep_time < Duration::from_millis(0) {
@@ -146,7 +147,7 @@ fn handle_client(
                     }
                 }
                 println!("Synchronizing after gamestate computation");
-                computed_gamestate.wait();
+                computed_next_tick.wait();
                 println!("Synchronized");
                 // broadcast count
                 stream
@@ -156,7 +157,7 @@ fn handle_client(
             },
             ConnectionType::Spectator => {
                 println!("Synchronizing after gamestate computation");
-                computed_gamestate.wait();
+                computed_next_tick.wait();
                 println!("Synchronized");
                 // broadcast count
                 stream
@@ -170,23 +171,28 @@ fn handle_client(
 #[derive(Parser, Debug)]
 #[clap(author="Eliot Kimmel", version, about="Backend game server demo")]
 struct Args {
-    /// Run in training mode: headless with maximum possible framerate
+    /// Run in training mode: headless with maximum possible game tick rate
     #[arg(short, long, default_value_t = false)]
     training_mode: bool,
-    /// Frame delay in milliseconds, for normal mode
+    /// Game tick delay in milliseconds, for normal mode
     #[arg(short, long, default_value_t = 16)]
-    frame_delay: u64,
+    game_tick_delay: u64,
     /// Maximum total milliseconds a competitor can be "late" with their response
     #[arg(short, long, default_value_t = 1000)]
-    max_timeout_deficit: u128
+    max_timeout_deficit: u128,
+    /// Maximum game ticks until the game is over
+    #[arg(short, long, default_value_t = 1000)]
+    max_game_ticks: u32
 }
 
 
 fn main() {
+
     let args = Args::parse();
     let training_mode = args.training_mode;
-    let frame_delay = args.frame_delay;
+    let game_tick_delay = args.game_tick_delay;
     let max_timeout_deficit = args.max_timeout_deficit;
+    let max_game_ticks = args.max_game_ticks;
     let listener = TcpListener::bind("127.0.0.1:44556").unwrap();
     let counter: Arc<Mutex<i32>> = Arc::new(Mutex::new(0));
     let num_competitors: Arc<Mutex<u32>> = Arc::new(Mutex::new(0));
@@ -195,7 +201,7 @@ fn main() {
     let recieved_inputs = Arc::new(Barrier::new(2));
     // competitor and spectator handling threads must wait for new gamestate to be computed
     // don't sync with spectator thread in training mode
-    let computed_gamestate = Arc::new(Barrier::new(2 + if training_mode {0} else {1}));
+    let computed_next_tick = Arc::new(Barrier::new(2 + if training_mode {0} else {1}));
     let mut threads_spawned: u32 = 0;
     for stream in listener.incoming() {
         match stream {
@@ -205,21 +211,21 @@ fn main() {
                 let num_competitors = Arc::clone(&num_competitors);
                 let has_spectator = Arc::clone(&num_spectators);
                 let recieved_inputs = Arc::clone(&recieved_inputs);
-                let computed_gamestate = Arc::clone(&computed_gamestate);
+                let computed_next_tick = Arc::clone(&computed_next_tick);
                 // need 1 handler thread in training mode, need 2 otherwise
                 if threads_spawned < if training_mode {1} else {2} {
                     thread::spawn(move || {
                         handle_client(stream, counter,num_competitors, has_spectator,
-                            recieved_inputs, computed_gamestate, training_mode, frame_delay,
-                            max_timeout_deficit
+                            recieved_inputs, computed_next_tick, training_mode, game_tick_delay,
+                            max_timeout_deficit, max_game_ticks
                         );
                     });
                     threads_spawned += 1;
                 } else {
                     // use the main thread to handle final connection to reduce thread usage
                     handle_client(stream, counter,num_competitors, has_spectator,
-                        recieved_inputs, computed_gamestate, training_mode, frame_delay,
-                        max_timeout_deficit
+                        recieved_inputs, computed_next_tick, training_mode, game_tick_delay,
+                        max_timeout_deficit, max_game_ticks
                     );
                 }
             }

@@ -15,3 +15,4 @@ path = "backend/test-client/main.rs"
 
 [dependencies]
 clap = { version = "4.4.14", features = ["derive"] }
+rand = "0.8.5"
