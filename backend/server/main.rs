@@ -17,13 +17,12 @@ enum ConnectionType {
     Spectator
 }
 
-fn read_until_newline(stream: &mut TcpStream) -> String {
-    // Create buffer for TCP stream
-    let mut buf = [0; BUFFER_SIZE];
+// pass in buffer so we don't have to keep re-declaring it
+fn read_until_newline(stream: &mut TcpStream, buf: &mut [u8;BUFFER_SIZE]) -> String {
     // Read bytes into the buffer
     println!("Reading bytes");
     let bytes_read = stream
-        .read(&mut buf)
+        .read(buf)
         .expect("Could not read from the stream");
     if bytes_read == 0 {
         println!("Client disconnected");
@@ -58,13 +57,14 @@ fn handle_client(
     let mut connection_type: ConnectionType = ConnectionType::Unknown;
     let mut last_broadcast = Instant::now();
     let mut timeout_debt: u128 = 0;
+    let mut buf: [u8;BUFFER_SIZE] = [0;BUFFER_SIZE];
 
     loop {
         let msg: String;
 
         match connection_type {
             ConnectionType::Unknown => {
-                msg = read_until_newline(&mut stream);
+                msg = read_until_newline(&mut stream, &mut buf);
                 match msg.trim() {
                     "COMPETITOR" => {
                         let mut num_competitors = num_competitors.lock().unwrap();
@@ -110,7 +110,7 @@ fn handle_client(
                 }
             },
             ConnectionType::CompetitorA | ConnectionType::CompetitorB => {
-                msg = read_until_newline(&mut stream);
+                msg = read_until_newline(&mut stream, &mut buf);
                 if !training_mode {
                     // measure time since last broadcast
                     let since_last_broadcast = last_broadcast.elapsed();
@@ -187,7 +187,6 @@ struct Args {
 
 
 fn main() {
-
     let args = Args::parse();
     let training_mode = args.training_mode;
     let game_tick_delay = args.game_tick_delay;
