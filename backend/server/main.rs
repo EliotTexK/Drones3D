@@ -4,11 +4,13 @@ use std::sync::{Arc, Mutex, Barrier};
 use std::thread;
 use std::time::{Instant, Duration};
 use clap::Parser;
+use gamestate::Gamestate;
+use rand::thread_rng;
 
 pub mod gamestate;
 
 // TCP buffer size for incoming client messages
-const BUFFER_SIZE: usize = 512;
+const BUFFER_SIZE: usize = 1024;
 
 enum ConnectionType {
     Unknown,
@@ -44,27 +46,28 @@ fn read_until_newline(stream: &mut TcpStream, buf: &mut [u8;BUFFER_SIZE]) -> Str
 
 fn handle_client(
     mut stream: TcpStream,
-    counter: Arc<Mutex<i32>>,
     num_competitors: Arc<Mutex<u32>>,
     num_spectators: Arc<Mutex<u32>>,
     recieved_inputs: Arc<Barrier>,
     computed_next_tick: Arc<Barrier>,
+    gamestate: Arc<Mutex<Gamestate>>,
+    input_a: Arc<Mutex<String>>,
+    input_b: Arc<Mutex<String>>,
     training_mode: bool,
     game_tick_delay: u64,
     competitor_max_debt: u128,
-    max_game_ticks: u32
 ) {
     let mut connection_type: ConnectionType = ConnectionType::Unknown;
     let mut last_broadcast = Instant::now();
     let mut timeout_debt: u128 = 0;
     let mut buf: [u8;BUFFER_SIZE] = [0;BUFFER_SIZE];
+    let mut rng = thread_rng();
 
     loop {
-        let msg: String;
 
         match connection_type {
             ConnectionType::Unknown => {
-                msg = read_until_newline(&mut stream, &mut buf);
+                let msg = read_until_newline(&mut stream, &mut buf);
                 match msg.trim() {
                     "COMPETITOR" => {
                         let mut num_competitors = num_competitors.lock().unwrap();
@@ -79,8 +82,9 @@ fn handle_client(
                             println!("Reached max competitors already: disconnect");
                             return;
                         }
+                        let gamestate = gamestate.lock().unwrap();
                         stream
-                            .write(format!("{}\n", *counter.lock().unwrap()).as_bytes())
+                        .write(format!("{}\n", serde_json::to_string(&*gamestate).unwrap()).as_bytes())
                             .expect("Could not write to the stream");
                         println!("Broadcasted initial gamestate");
                         last_broadcast = Instant::now();
@@ -98,8 +102,9 @@ fn handle_client(
                             connection_type = ConnectionType::Spectator;
                             *num_spectators = 1;
                         }
+                        let gamestate = gamestate.lock().unwrap();
                         stream
-                            .write(format!("{}\n", *counter.lock().unwrap()).as_bytes())
+                        .write(format!("{}\n", serde_json::to_string(&*gamestate).unwrap()).as_bytes())
                             .expect("Could not write to the stream");
                         println!("Broadcasted initial gamestate");
                     },
@@ -109,8 +114,11 @@ fn handle_client(
                     }
                 }
             },
-            ConnectionType::CompetitorA | ConnectionType::CompetitorB => {
-                msg = read_until_newline(&mut stream, &mut buf);
+            ConnectionType::CompetitorA => {
+                {
+                    let mut input_a = input_a.lock().unwrap();
+                    *input_a = read_until_newline(&mut stream, &mut buf);
+                }
                 if !training_mode {
                     // measure time since last broadcast
                     let since_last_broadcast = last_broadcast.elapsed();
@@ -134,35 +142,73 @@ fn handle_client(
                 println!("Waiting for both inputs to be recieved");
                 recieved_inputs.wait();
                 println!("Recieved both inputs");
-                match msg.trim() {
-                    "+" => {
-                        *counter.lock().unwrap() += 1;
-                    },
-                    "-" => {
-                        *counter.lock().unwrap() -= 1;
-                    },
-                    _ => {
-                        println!("Competitor sent invalid input: disconnect");
-                        return;
-                    }
+                // compute gamestate in Competitor A's handler thread
+                // the distiction between thread A and B is arbitrary
+                {
+                    let input_b = input_b.lock().unwrap();
+                    let input_a = input_a.lock().unwrap();
+                    let mut gamestate = gamestate.lock().unwrap();
+                    gamestate.compute_next_tick(&mut rng, input_a.clone(), input_b.clone());
                 }
-                println!("Synchronizing after gamestate computation");
+                println!("Competitor A: synchronizing after gamestate computation");
                 computed_next_tick.wait();
                 println!("Synchronized");
-                // broadcast count
+                // broadcast game state
                 stream
-                    .write(format!("{}\n", *counter.lock().unwrap()).as_bytes())
+                    .write(format!("{}\n", serde_json::to_string(&*gamestate).unwrap()).as_bytes())
+                    .expect("Could not write to the stream");
+                last_broadcast = Instant::now();
+            },
+            ConnectionType::CompetitorB => {
+                {
+                    let mut input_b = input_b.lock().unwrap();
+                    *input_b = read_until_newline(&mut stream, &mut buf);
+                }
+                // TODO: make the following lines into a function
+                if !training_mode {
+                    // measure time since last broadcast
+                    let since_last_broadcast = last_broadcast.elapsed();
+                    let remaining_sleep_time =
+                        Duration::from_millis(game_tick_delay) - since_last_broadcast;
+                    // Check if sleeping is needed
+                    if remaining_sleep_time > Duration::from_millis(0) {
+                        // Sleep until next game tick
+                        std::thread::sleep(remaining_sleep_time);
+                    }
+                    if remaining_sleep_time < Duration::from_millis(0) {
+                        // Add to timeout deficit
+                        timeout_debt -= remaining_sleep_time.as_millis();
+                        if timeout_debt > competitor_max_debt {
+                            println!("Competitor has taken too long: disconnect");
+                            return;
+                        }
+                    }
+                }
+                // wait for the other competitor to send data
+                println!("Waiting for both inputs to be recieved");
+                recieved_inputs.wait();
+                println!("Recieved both inputs");
+                // competitor A computes
+                println!("Competitor B: synchronizing after gamestate computation");
+                computed_next_tick.wait();
+                println!("Synchronized");
+                // broadcast game state
+                let gamestate = gamestate.lock().unwrap();
+                stream
+                .write(format!("{}\n", serde_json::to_string(&*gamestate).unwrap()).as_bytes())
                     .expect("Could not write to the stream");
                 last_broadcast = Instant::now();
             },
             ConnectionType::Spectator => {
-                println!("Synchronizing after gamestate computation");
+                println!("Spectator: synchronizing after gamestate computation");
                 computed_next_tick.wait();
                 println!("Synchronized");
-                // broadcast count
+                // broadcast game state
+                let gamestate = gamestate.lock().unwrap();
                 stream
-                    .write(format!("{}\n", *counter.lock().unwrap()).as_bytes())
+                .write(format!("{}\n", serde_json::to_string(&*gamestate).unwrap()).as_bytes())
                     .expect("Could not write to the stream");
+                last_broadcast = Instant::now();
             }
         }
     }
@@ -181,7 +227,7 @@ struct Args {
     #[arg(short, long, default_value_t = 1000)]
     competitor_max_debt: u128,
     /// Maximum game ticks until the game is over
-    #[arg(short, long, default_value_t = 1000)]
+    #[arg(short, long, default_value_t = 10000)]
     max_game_ticks: u32
 }
 
@@ -193,9 +239,11 @@ fn main() {
     let competitor_max_debt = args.competitor_max_debt;
     let max_game_ticks = args.max_game_ticks;
     let listener = TcpListener::bind("127.0.0.1:44556").unwrap();
-    let counter: Arc<Mutex<i32>> = Arc::new(Mutex::new(0));
     let num_competitors: Arc<Mutex<u32>> = Arc::new(Mutex::new(0));
     let num_spectators = Arc::new(Mutex::new(0));
+    let gamestate = Arc::new(Mutex::new(Gamestate::new(&mut thread_rng(), max_game_ticks)));
+    let input_a = Arc::new(Mutex::new(String::new()));
+    let input_b = Arc::new(Mutex::new(String::new()));
     // must recieve input from both threads before computing gamestate
     let recieved_inputs = Arc::new(Barrier::new(2));
     // competitor and spectator handling threads must wait for new gamestate to be computed
@@ -206,25 +254,27 @@ fn main() {
         match stream {
             Ok(stream) => {
                 println!("Connected to client!");
-                let counter = Arc::clone(&counter);
                 let num_competitors = Arc::clone(&num_competitors);
                 let has_spectator = Arc::clone(&num_spectators);
                 let recieved_inputs = Arc::clone(&recieved_inputs);
                 let computed_next_tick = Arc::clone(&computed_next_tick);
-                // need 1 handler thread in training mode, need 2 otherwise
+                let gamestate = Arc::clone(&gamestate);
+                let input_a = Arc::clone(&input_a);
+                let input_b = Arc::clone(&input_b);
+                // spawn 1 handler thread in training mode, spawn 2 otherwise
                 if threads_spawned < if training_mode {1} else {2} {
                     thread::spawn(move || {
-                        handle_client(stream, counter,num_competitors, has_spectator,
-                            recieved_inputs, computed_next_tick, training_mode, game_tick_delay,
-                            competitor_max_debt, max_game_ticks
+                        handle_client(stream,num_competitors, has_spectator,
+                            recieved_inputs, computed_next_tick, gamestate, input_a, input_b,
+                            training_mode, game_tick_delay, competitor_max_debt
                         );
                     });
                     threads_spawned += 1;
                 } else {
                     // use the main thread to handle final connection to reduce thread usage
-                    handle_client(stream, counter,num_competitors, has_spectator,
-                        recieved_inputs, computed_next_tick, training_mode, game_tick_delay,
-                        competitor_max_debt, max_game_ticks
+                    handle_client(stream, num_competitors, has_spectator,
+                        recieved_inputs, computed_next_tick, gamestate, input_a, input_b,
+                        training_mode, game_tick_delay, competitor_max_debt
                     );
                 }
             }

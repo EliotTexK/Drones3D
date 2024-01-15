@@ -1,5 +1,6 @@
 use std::{collections::HashMap, ops::Range};
 use rand::{Rng, rngs::ThreadRng};
+use serde::{Serialize, Deserialize};
 
 // game area bounded by a cube, this value is half of said cube's side length
 const GAME_AREA_SIZE: f32 = 20.0;
@@ -7,8 +8,8 @@ const GAME_AREA_SIZE: f32 = 20.0;
 const OBSTACLE_AREA_SIZE: f32 = GAME_AREA_SIZE * 1.5;
 // don't spawn too close to the edge, or too close to the center
 const PLAYER_SPAWN_RANGE: Range<f32> = Range {
-    start: GAME_AREA_SIZE * 0.75,
-    end: GAME_AREA_SIZE * 0.25,
+    start: GAME_AREA_SIZE * 0.25,
+    end: GAME_AREA_SIZE * 0.75,
 };
 const PLAYER_RADIUS: f32 = 1.0;
 const MAX_PLAYER_RESPAWN_TIMER: u32 = 80;
@@ -42,8 +43,25 @@ fn intersect_sphere_lineseg(
     v1: &[f32;3],
     v2: &[f32;3]
 ) -> bool {
-    // TODO
-    return true;
+    // solved using parametric equation for a line: l(t) = v1*(1-t) + v2
+    // we plug this into the sphere's equation x^2 + y^2 + z^2 = r^2
+    // this yields a quadratic which we solve for t
+    // we have intersection if at least one solution satisfies 0 < t < 1
+    let r2 = radius.powf(2.0);
+    let a = (v1[0]-center[0]).powf(2.0) +
+            (v1[1]-center[1]).powf(2.0) +
+            (v1[2]-center[2]).powf(2.0) - r2;
+    if a == 0.0 { return true; } // edge case (literally)
+    let c = (v1[0]-v2[0]).powf(2.0) +
+            (v1[1]-v2[1]).powf(2.0) +
+            (v1[2]-v2[2]).powf(2.0);
+    let b = (v2[0]-center[0]).powf(2.0) +
+            (v2[1]-center[1]).powf(2.0) +
+            (v2[2]-center[2]).powf(2.0) - a - c - r2;
+    let b2 = b.powf(2.0);
+    let t_min = (-b - (b2 - 4.0*a*c).sqrt())/2.0*a;
+    let t_max = (-b - (b2 - 4.0*a*c).sqrt())/2.0*a;
+    return (0.0 < t_min && t_min < 1.0) || (0.0 < t_max && t_max < 1.0);
 }
 
 fn intersect_spheres(
@@ -91,41 +109,62 @@ fn inside_game_area(
         && (position[2] + radius) <= GAME_AREA_SIZE;
 }
 
-// float input restricted between -1 and 1
-struct Threshold {
-    value: f32,
-}
-
-impl Threshold {
-    pub fn new(value: f32) -> Threshold {
-        Threshold { value: value.clamp(-1.0, 1.0) }
-    }
-}
-
-#[derive(PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Serialize)]
 enum Team {
     A,
     B
 }
 
-pub struct Controls {
-    rot_y: Threshold,
-    forward_back: Threshold,
-    up_down: Threshold,
+#[derive(Deserialize)]
+struct ControlsRaw {
+    rot_y: f32,
+    forward_back: f32,
+    up_down: f32,
+    shoot: bool
+}
+
+#[derive(Deserialize)]
+pub struct InputRaw {
+    controls_1: ControlsRaw,
+    controls_2: ControlsRaw
+}
+
+#[derive(Clone, Copy)]
+struct Controls {
+    rot_y: f32,
+    forward_back: f32,
+    up_down: f32,
     shoot: bool
 }
 
 impl Controls {
-    pub fn deserialize(input: String) -> Controls {
-        return Controls {
-            rot_y: Threshold::new(1.0),
-            forward_back: Threshold::new(1.0),
-            up_down: Threshold::new(1.0),
+    fn validate_raw_controls(raw: &InputRaw) -> [Controls;2] {
+        [
+            Controls {
+                rot_y: raw.controls_1.rot_y.clamp(-1.0,1.0),
+                forward_back: raw.controls_1.forward_back.clamp(-1.0,1.0),
+                up_down: raw.controls_1.up_down.clamp(-1.0, 1.0),
+                shoot: raw.controls_1.shoot
+            },
+            Controls {
+                rot_y: raw.controls_2.rot_y.clamp(-1.0,1.0),
+                forward_back: raw.controls_2.forward_back.clamp(-1.0,1.0),
+                up_down: raw.controls_2.up_down.clamp(-1.0, 1.0),
+                shoot: raw.controls_2.shoot
+            }
+        ]
+    }
+    fn empty() -> Controls {
+        Controls {
+            rot_y: 0.0,
+            forward_back: 0.0,
+            up_down: 0.0,
             shoot: false
         }
     }
 }
 
+#[derive(Serialize)]
 struct Player {
     team: Team,
     position: [f32;3],
@@ -170,6 +209,8 @@ impl Player {
     }
 }
 
+
+#[derive(Serialize)]
 struct Obstacle {
     guid: u64,
     position: [f32;3],
@@ -178,6 +219,7 @@ struct Obstacle {
 }
 
 // bullet is a line segment: between its current and previous position
+#[derive(Serialize)]
 struct Bullet {
     team: Team,
     guid: u64,
@@ -186,6 +228,7 @@ struct Bullet {
     velocity: [f32;2] // only moves horizontally, for now
 }
 
+#[derive(Serialize)]
 pub struct Gamestate {
     ticks_progressed: u32,
     max_game_ticks: u32,
@@ -202,10 +245,6 @@ pub struct Gamestate {
 }
 
 impl Gamestate {
-    pub fn serialize(&self) -> String {
-        // TODO
-        return String::from("TODO");
-    }
     pub fn find_fair_spawnpoint(&self, rng: &mut ThreadRng) -> [f32;3] {
         // TODO: find spawnpoint devoid of players/obstacles/bullets
         return [
@@ -240,14 +279,40 @@ impl Gamestate {
     }
     pub fn compute_next_tick(
         &mut self, rng: &mut ThreadRng,
-        controls_a1: &Controls, controls_a2: &Controls,
-        controls_b1: &Controls, controls_b2: &Controls
-    ) -> bool {
-        // tick main game timer; if game is over return true
-        self.ticks_progressed += 1;
-        if self.ticks_progressed > self.max_game_ticks {
-            return true;
+        input_a: String,
+        input_b: String
+    ) {
+        let controls_a1: Controls;
+        let controls_a2: Controls;
+        let controls_b1: Controls;
+        let controls_b2: Controls;
+        // validate controls sent by user
+        {
+            let result_a: Result<InputRaw,serde_json::Error> = serde_json::from_str(&input_a);
+            let controls_a: [Controls;2] = match result_a {
+                Ok(raw) => {
+                    Controls::validate_raw_controls(&raw)
+                },
+                Err(_) => {
+                    [Controls::empty(), Controls::empty()]
+                },
+            };
+            controls_a1 = controls_a[0];
+            controls_a2 = controls_a[1];
+            let result_b: Result<InputRaw,serde_json::Error> = serde_json::from_str(&input_b);
+            let controls_b: [Controls;2] = match result_b {
+                Ok(raw) => {
+                    Controls::validate_raw_controls(&raw)
+                },
+                Err(_) => {
+                    [Controls::empty(), Controls::empty()]
+                },
+            };
+            controls_b1 = controls_b[0];
+            controls_b2 = controls_b[1];
         }
+        // tick main game timer
+        self.ticks_progressed += 1;
         // spawn, move, and despawn obstacles
         self.obstacle_spawn_timer += 1;
         if self.obstacle_spawn_timer > MAX_OBSTACLE_SPAWN_TIMER {
@@ -307,14 +372,14 @@ impl Gamestate {
                     player.reload_timer = 0;
                 }
             }
-            player.velocity[2] += controls.up_down.value * PLAYER_THRUST_FACTOR;
-            player.rot_y += controls.rot_y.value * PLAYER_TURN_SPEED;
+            player.velocity[2] += controls.up_down * PLAYER_THRUST_FACTOR;
+            player.rot_y += controls.rot_y * PLAYER_TURN_SPEED;
             let direction_vec2 = [
                 f32::cos(player.rot_y),
                 f32::sin(player.rot_y)
             ];
-            player.velocity[0] += direction_vec2[0] * PLAYER_THRUST_FACTOR * controls.forward_back.value;
-            player.velocity[1] += direction_vec2[1] * PLAYER_THRUST_FACTOR * controls.forward_back.value;
+            player.velocity[0] += direction_vec2[0] * PLAYER_THRUST_FACTOR * controls.forward_back;
+            player.velocity[1] += direction_vec2[1] * PLAYER_THRUST_FACTOR * controls.forward_back;
             add_vec3(&mut player.position, &player.velocity);
             if controls.shoot && player.ammo > 0
             && player.fire_rate_timer > FIRE_RATE_TIMER_MAX {
@@ -436,7 +501,5 @@ impl Gamestate {
                 player.respawn_timer = 0;
             }
         }
-        // return false, game's not over
-        return false;
     }
 }
