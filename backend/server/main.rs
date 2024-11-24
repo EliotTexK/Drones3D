@@ -66,6 +66,7 @@ fn handle_client(
     loop {
 
         match connection_type {
+            // Handle client identification
             ConnectionType::Unknown => {
                 let msg = read_until_newline(&mut stream, &mut buf);
                 match msg.trim() {

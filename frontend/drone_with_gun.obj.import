@@ -1,0 +1,22 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://cwbe5fe06w8c6"
+path="res://.godot/imported/drone_with_gun.obj-2d0a7163e1ac2a7bf721156b8c8fac0e.mesh"
+
+[deps]
+
+files=["res://.godot/imported/drone_with_gun.obj-2d0a7163e1ac2a7bf721156b8c8fac0e.mesh"]
+
+source_file="res://drone_with_gun.obj"
+dest_files=["res://.godot/imported/drone_with_gun.obj-2d0a7163e1ac2a7bf721156b8c8fac0e.mesh", "res://.godot/imported/drone_with_gun.obj-2d0a7163e1ac2a7bf721156b8c8fac0e.mesh"]
+
+[params]
+
+generate_tangents=true
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+optimize_mesh=true
+force_disable_mesh_compression=false

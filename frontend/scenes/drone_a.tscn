@@ -1,0 +1,23 @@
+[gd_scene load_steps=4 format=3 uid="uid://dn53p2u67of5x"]
+
+[ext_resource type="ArrayMesh" uid="uid://cwbe5fe06w8c6" path="res://drone_with_gun.obj" id="1_dyok6"]
+
+[sub_resource type="SphereMesh" id="SphereMesh_4inf2"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_bxw81"]
+transparency = 1
+blend_mode = 1
+albedo_color = Color(1, 0, 0, 0.184314)
+metallic = 1.0
+roughness = 0.0
+
+[node name="Node3D" type="Node3D"]
+
+[node name="DroneWithGun" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.15, 0, 0, 0, 0.15, 0, 0, 0, 0.15, -0.151889, 0, 0)
+mesh = ExtResource("1_dyok6")
+
+[node name="Shield" type="MeshInstance3D" parent="."]
+transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, -0.0245354, 0.221058, 0)
+mesh = SubResource("SphereMesh_4inf2")
+surface_material_override/0 = SubResource("StandardMaterial3D_bxw81")

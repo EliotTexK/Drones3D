@@ -25,16 +25,33 @@ const OBSTACLE_SPAWN_TIMER_INIT: Range<u32> = Range {
 };
 const OBSTACLE_RADIUS: Range<f32> = Range {
     start: 1.5,
-    end: 2.0
+    end: 5.0
 };
 const BULLET_SPEED: f32 = 0.25;
 
+// return 1 or -1 with 50-50 chance
+fn get_random_sign(rng: &mut ThreadRng) -> f32 {
+    return ((rng.gen_range(Range {start: 0, end: 2}) * 2) - 1) as f32;
+}
+
 fn get_random_spawnpoint(rng: &mut ThreadRng) -> [f32;3] {
+    // get some random point with manhattan distance in the range of acceptible distances
+    // from the center, then randomly decide the signs of its coordinates
+    // TODO: spatially partition the play area and spawn players away from each other
+    // or perhaps just have a fixed spawnpoint
     return [
-        rng.gen_range(PLAYER_SPAWN_RANGE),
-        rng.gen_range(PLAYER_SPAWN_RANGE),
-        rng.gen_range(PLAYER_SPAWN_RANGE)
+        rng.gen_range(PLAYER_SPAWN_RANGE) * get_random_sign(rng),
+        rng.gen_range(PLAYER_SPAWN_RANGE) * get_random_sign(rng),
+        rng.gen_range(PLAYER_SPAWN_RANGE) * get_random_sign(rng)
     ];
+}
+
+fn get_random_velocity(rng: &mut ThreadRng) -> [f32;3] {
+    return [
+        rng.gen_range(Range {start: -0.2, end: 0.2}),
+        rng.gen_range(Range {start: -0.2, end: 0.2}),
+        rng.gen_range(Range {start: -0.2, end: 0.2})
+    ]
 }
 
 fn intersect_sphere_lineseg(
@@ -117,10 +134,11 @@ enum Team {
 
 #[derive(Deserialize)]
 struct ControlsRaw {
-    rot_y: f32,
+    rot_y: f32, // radians
     forward_back: f32,
     up_down: f32,
-    shoot: bool
+    shoot: bool,
+    shot_angle: f32, // radians, 0 is straight forward, negative down, positive up
 }
 
 #[derive(Deserialize)]
@@ -134,7 +152,8 @@ struct Controls {
     rot_y: f32,
     forward_back: f32,
     up_down: f32,
-    shoot: bool
+    shoot: bool,
+    shot_angle: f32,
 }
 
 impl Controls {
@@ -144,14 +163,16 @@ impl Controls {
                 rot_y: raw.controls_1.rot_y.clamp(-1.0,1.0),
                 forward_back: raw.controls_1.forward_back.clamp(-1.0,1.0),
                 up_down: raw.controls_1.up_down.clamp(-1.0, 1.0),
-                shoot: raw.controls_1.shoot
+                shoot: raw.controls_1.shoot,
+                shot_angle: raw.controls_1.shot_angle,
             },
             Controls {
                 rot_y: raw.controls_2.rot_y.clamp(-1.0,1.0),
                 forward_back: raw.controls_2.forward_back.clamp(-1.0,1.0),
                 up_down: raw.controls_2.up_down.clamp(-1.0, 1.0),
-                shoot: raw.controls_2.shoot
-            }
+                shoot: raw.controls_2.shoot,
+                shot_angle: raw.controls_2.shot_angle,
+            },
         ]
     }
     fn empty() -> Controls {
@@ -159,7 +180,8 @@ impl Controls {
             rot_y: 0.0,
             forward_back: 0.0,
             up_down: 0.0,
-            shoot: false
+            shoot: false,
+            shot_angle: 0.0,
         }
     }
 }
@@ -178,7 +200,7 @@ struct Player {
 }
 
 impl Player {
-    // TODO: implement find_fair_spawnpoint
+    // TODO: implement find_fair_spawnpoint, use an octree and bfs to find furthest location from enemies/obstacles
     pub fn spawn(position: [f32;3], team: Team) -> Player {
         Player {
             team: team,
@@ -192,7 +214,6 @@ impl Player {
             respawn_timer: 0
         }
     }
-    // TODO: figure out a way to do this with less lines of code
     pub fn respawn(&mut self, rng: &mut ThreadRng) {
         self.position = [
             rng.gen_range(PLAYER_SPAWN_RANGE),
@@ -225,7 +246,7 @@ struct Bullet {
     guid: u64,
     position: [f32;3],
     prev_position: [f32;3],
-    velocity: [f32;2] // only moves horizontally, for now
+    velocity: [f32;3]
 }
 
 #[derive(Serialize)]
@@ -321,7 +342,7 @@ impl Gamestate {
                 // TODO: spawn position should be outside the game area, but inside the obstacle area
                 position: get_random_spawnpoint(rng),
                 // TODO: velocity should point the obstacle towards somewhere in the game area
-                velocity: [0.0,0.0,0.0],
+                velocity: get_random_velocity(rng),
                 radius: rng.gen_range(OBSTACLE_RADIUS)
             };
             self.obstacles.insert(spawned.guid, spawned);
@@ -395,7 +416,8 @@ impl Gamestate {
                     prev_position: new_pos,
                     velocity: [
                         direction_vec2[0] * BULLET_SPEED,
-                        direction_vec2[1] * BULLET_SPEED
+                        direction_vec2[1] * BULLET_SPEED,
+                        f32::sin(controls.shot_angle),
                     ],
                 };
                 self.bullets.insert(spawned.guid, spawned);

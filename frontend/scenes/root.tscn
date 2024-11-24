@@ -1,6 +1,131 @@
-[gd_scene load_steps=2 format=3 uid="uid://dj67qcdqgpg3f"]
+[gd_scene load_steps=12 format=3 uid="uid://cmn6riqa8anlp"]
 
 [ext_resource type="Script" path="res://scripts/root.gd" id="1_pgm76"]
+[ext_resource type="ArrayMesh" uid="uid://hpuksr7pfni5" path="res://cube_with_flipped_normals.obj" id="2_7g8ak"]
+[ext_resource type="Script" path="res://scenes/MainCamera.gd" id="3_h2mto"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_lyd3e"]
+sky_curve = 0.235375
+ground_bottom_color = Color(0.101961, 0.113725, 0.0666667, 1)
+ground_horizon_color = Color(0.662745, 0.756863, 0.823529, 1)
+ground_curve = 0.242515
+
+[sub_resource type="Sky" id="Sky_j20yx"]
+sky_material = SubResource("ProceduralSkyMaterial_lyd3e")
+
+[sub_resource type="Environment" id="Environment_0m1r5"]
+background_mode = 2
+sky = SubResource("Sky_j20yx")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_0blep"]
+transparency = 1
+albedo_color = Color(0, 0, 0, 0.282353)
+
+[sub_resource type="TubeTrailMesh" id="TubeTrailMesh_bor5e"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_qgygm"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(1, 1, 1, 0.211765)
+
+[sub_resource type="SphereMesh" id="SphereMesh_c0be5"]
+
+[sub_resource type="MultiMesh" id="MultiMesh_mc0qd"]
+transform_format = 1
+instance_count = 1
+visible_instance_count = 50
+mesh = SubResource("SphereMesh_c0be5")
+buffer = PackedFloat32Array(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3.25676e-41)
 
 [node name="Root" type="Node3D"]
 script = ExtResource("1_pgm76")
+
+[node name="MainCamera" type="Camera3D" parent="."]
+transform = Transform3D(0.707107, 0.5, -0.5, 0, 0.707107, 0.707107, 0.707107, -0.5, 0.5, 30, 40, 30)
+script = ExtResource("3_h2mto")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_0m1r5")
+
+[node name="BoundsBox" type="Node3D" parent="."]
+
+[node name="CubeFlippedNormals" type="MeshInstance3D" parent="BoundsBox"]
+transform = Transform3D(20, 0, 0, 0, 20, 0, 0, 0, 20, 0, 0, 0)
+mesh = ExtResource("2_7g8ak")
+skeleton = NodePath("../..")
+surface_material_override/0 = SubResource("StandardMaterial3D_0blep")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="BoundsBox"]
+transform = Transform3D(0.1, 0, 0, 0, 40, 0, 0, 0, 0.1, 20, 0, 20)
+mesh = SubResource("TubeTrailMesh_bor5e")
+skeleton = NodePath("../../WorldEnvironment")
+surface_material_override/0 = SubResource("StandardMaterial3D_qgygm")
+
+[node name="MeshInstance3D2" type="MeshInstance3D" parent="BoundsBox"]
+transform = Transform3D(0.1, 0, 0, 0, 40, 0, 0, 0, 0.1, -20, 0, 20)
+mesh = SubResource("TubeTrailMesh_bor5e")
+skeleton = NodePath("../../WorldEnvironment")
+surface_material_override/0 = SubResource("StandardMaterial3D_qgygm")
+
+[node name="MeshInstance3D3" type="MeshInstance3D" parent="BoundsBox"]
+transform = Transform3D(0.1, 0, 0, 0, 40, 0, 0, 0, 0.1, 20, 0, -20)
+mesh = SubResource("TubeTrailMesh_bor5e")
+skeleton = NodePath("../../WorldEnvironment")
+surface_material_override/0 = SubResource("StandardMaterial3D_qgygm")
+
+[node name="MeshInstance3D4" type="MeshInstance3D" parent="BoundsBox"]
+transform = Transform3D(0.1, 0, 0, 0, 40, 0, 0, 0, 0.1, -20, 0, -20)
+mesh = SubResource("TubeTrailMesh_bor5e")
+skeleton = NodePath("../../WorldEnvironment")
+surface_material_override/0 = SubResource("StandardMaterial3D_qgygm")
+
+[node name="MeshInstance3D5" type="MeshInstance3D" parent="BoundsBox"]
+transform = Transform3D(-4.37114e-09, -40, 0, 0.1, -1.74846e-06, 0, 0, 0, 0.1, -8.74228e-07, 20, 20)
+mesh = SubResource("TubeTrailMesh_bor5e")
+skeleton = NodePath("../../WorldEnvironment")
+surface_material_override/0 = SubResource("StandardMaterial3D_qgygm")
+
+[node name="MeshInstance3D6" type="MeshInstance3D" parent="BoundsBox"]
+transform = Transform3D(-4.37114e-09, -40, 0, 0.1, -1.74846e-06, 0, 0, 0, 0.1, 8.74228e-07, -20, 20)
+mesh = SubResource("TubeTrailMesh_bor5e")
+skeleton = NodePath("../../WorldEnvironment")
+surface_material_override/0 = SubResource("StandardMaterial3D_qgygm")
+
+[node name="MeshInstance3D7" type="MeshInstance3D" parent="BoundsBox"]
+transform = Transform3D(-4.37114e-09, -40, 0, 0.1, -1.74846e-06, 0, 0, 0, 0.1, -8.74228e-07, 20, -20)
+mesh = SubResource("TubeTrailMesh_bor5e")
+skeleton = NodePath("../../WorldEnvironment")
+surface_material_override/0 = SubResource("StandardMaterial3D_qgygm")
+
+[node name="MeshInstance3D8" type="MeshInstance3D" parent="BoundsBox"]
+transform = Transform3D(-4.37114e-09, -40, 0, 0.1, -1.74846e-06, 0, 0, 0, 0.1, 8.74228e-07, -20, -20)
+mesh = SubResource("TubeTrailMesh_bor5e")
+skeleton = NodePath("../../WorldEnvironment")
+surface_material_override/0 = SubResource("StandardMaterial3D_qgygm")
+
+[node name="MeshInstance3D9" type="MeshInstance3D" parent="BoundsBox"]
+transform = Transform3D(-1.64203e-16, 1.74846e-06, -0.1, 0.1, -1.74846e-06, 0, -4.37114e-09, -40, -4.37114e-09, -20, 20, -1.74846e-06)
+mesh = SubResource("TubeTrailMesh_bor5e")
+skeleton = NodePath("../../WorldEnvironment")
+surface_material_override/0 = SubResource("StandardMaterial3D_qgygm")
+
+[node name="MeshInstance3D10" type="MeshInstance3D" parent="BoundsBox"]
+transform = Transform3D(-1.64203e-16, 1.74846e-06, -0.1, 0.1, -1.74846e-06, 0, -4.37114e-09, -40, -4.37114e-09, -20, -20, 0)
+mesh = SubResource("TubeTrailMesh_bor5e")
+skeleton = NodePath("../../WorldEnvironment")
+surface_material_override/0 = SubResource("StandardMaterial3D_qgygm")
+
+[node name="MeshInstance3D11" type="MeshInstance3D" parent="BoundsBox"]
+transform = Transform3D(-1.64203e-16, 1.74846e-06, -0.1, 0.1, -1.74846e-06, 0, -4.37114e-09, -40, -4.37114e-09, 20, 20, 0)
+mesh = SubResource("TubeTrailMesh_bor5e")
+skeleton = NodePath("../../WorldEnvironment")
+surface_material_override/0 = SubResource("StandardMaterial3D_qgygm")
+
+[node name="MeshInstance3D12" type="MeshInstance3D" parent="BoundsBox"]
+transform = Transform3D(-1.64203e-16, 1.74846e-06, -0.1, 0.1, -1.74846e-06, 0, -4.37114e-09, -40, -4.37114e-09, 20, -20, 1.74846e-06)
+mesh = SubResource("TubeTrailMesh_bor5e")
+skeleton = NodePath("../../WorldEnvironment")
+surface_material_override/0 = SubResource("StandardMaterial3D_qgygm")
+
+[node name="Obstacles" type="MultiMeshInstance3D" parent="."]
+multimesh = SubResource("MultiMesh_mc0qd")
