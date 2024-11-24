@@ -13,7 +13,7 @@ fn main() {
         let msg = String::from_utf8_lossy(&buffer[..bytes_read]);
         println!("Client got message: {}", msg);
 
-        let response = b"{rot_y:0,forward_back:1,up_down:0,shoot:false}{rot_y:0,forward_back:1,up_down:0,shoot:false}\n";
+        let response = b"{rot_y:0,forward_back:1,up_down:0,shoot:false,shot_angle:0}{rot_y:0,forward_back:1,up_down:0,shoot:false,shot_angle:0}\n";
         stream.write(response).expect("Failed to write to server");
     }
 }
